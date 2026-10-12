@@ -1,1 +1,220 @@
+# StickmanUniversal: every module's settings are in this one file.
+# Switch a module on under 'modules', then restart the server.
 
+modules:
+  login:
+    enabled: false
+  teams:
+    enabled: false
+  adminessentials:
+    enabled: false
+  wand:
+    enabled: false
+  combat:
+    enabled: false
+  disguises:
+    enabled: false
+  creatures:
+    enabled: false
+  dungeons:
+    enabled: false
+  items:
+    enabled: false
+
+# ---- adminessentials settings ----
+adminessentials:
+  # Items listed here are banned. Use Bukkit material names, e.g. NETHERITE_SWORD.
+  banned-items: []
+  # How often (seconds) to remove banned items from inventories
+  scan-seconds: 1
+  # Remove banned items lying on the ground
+  remove-ground-items: true
+  # Tell players when an action is blocked
+  notify-on-block: true
+
+# ---- combat settings ----
+combat:
+  # StickCombat configuration. Colour codes use &.
+
+  combat:
+    # How long a player stays in combat after a fight.
+    duration-seconds: 15
+    # A player hitting another player starts combat for both.
+    tag-on-player-hit: true
+    # Mobs hitting a player also start combat for that player.
+    tag-on-mob-hit: false
+    # Show a message the first time a player enters combat.
+    start-message: true
+
+  barrier:
+    # Players cannot walk, teleport or fall into a safezone.
+    enabled: true
+    # true: only players in combat are kept out. false: everyone is kept out.
+    only-in-combat: false
+    # How hard a repelled player is pushed back out.
+    repel-strength: 0.9
+
+  safezones:
+    # Path to StickmanWand's zones file, relative to this plugin's folder.
+    zones-file: zones.yml
+    # How often to reload the zones file, in seconds.
+    refresh-seconds: 30
+
+  # Item rules. Each rule has:
+  #   key: a material name, for example NETHERITE_SWORD
+  #   name-contains: optional, only items whose name contains this word (for StickmanItems items)
+  #   cooldown-seconds: cooldown after each use (0 = none). Applies outside combat too.
+  #   cooldown-only-in-combat: true = the cooldown only applies while in combat
+  #   disabled-in-combat: true = the item cannot be used at all while in combat
+  #   banned: true = the item cannot be used and is removed from inventories
+  rules:
+    - key: ENDER_PEARL
+      cooldown-seconds: 10
+    - key: GOLDEN_APPLE
+      cooldown-seconds: 5
+      cooldown-only-in-combat: true
+    - key: TOTEM_OF_UNDYING
+      disabled-in-combat: true
+    - key: NETHERITE_SWORD
+      name-contains: Thunderstick
+      cooldown-seconds: 20
+    - key: NETHERITE_SWORD
+      name-contains: Void Slasher
+      banned: true
+
+  messages:
+    cooldown: "&c%item% is on cooldown for %seconds%s."
+    banned-item: "&cYou can't use %item%. It is banned here."
+    banned-removed: "&c%item% is banned and was removed from your inventory."
+    disabled-in-combat: "&c%item% can't be used while you are in combat."
+    combat-start: "&cYou are in combat for %seconds%s. Items may be restricted."
+    barrier-repel: "&cYou can't enter a safezone. Stay out!"
+    reloaded: "&aStickCombat reloaded: %rules% rules, %zones% safezones."
+
+# ---- login settings ----
+login:
+  # StickLogin configuration. Colour codes use & (for example &a is green).
+
+  security:
+    # PBKDF2 iterations. Higher is slower to crack but slower to log in.
+    hash-iterations: 120000
+    min-password-length: 8
+    max-password-length: 64
+    # Ask players to type the password twice when registering.
+    require-confirm: true
+    # Stop players from using their username as their password.
+    forbid-username-as-password: true
+
+  login:
+    # Players who have not logged in are kicked after this many seconds.
+    timeout-seconds: 60
+    # Wrong passwords before the player is locked out.
+    max-attempts: 5
+    # How long a locked-out player must wait before trying again.
+    lockout-minutes: 5
+    # Players who have not logged in cannot take damage.
+    freeze-damage: true
+    # Send players back to where they were when they log in.
+    restore-location: true
+
+  session:
+    # Players who rejoin from the same IP within this many minutes skip the login. 0 turns this off.
+    minutes: 1440
+
+  limbo:
+    # Players who have not logged in are held here. Set enabled to false to keep them where they joined.
+    enabled: true
+    world: world
+    x: 0.5
+    y: 80
+    z: 0.5
+    yaw: 0
+    pitch: 0
+
+  # Commands that players can use before logging in (without the slash).
+  allowed-commands:
+    - help
+
+  messages:
+    join-login: "&eWelcome back! Type &a/login <password> &eto play. You have %timeout% seconds."
+    join-register: "&eWelcome! Type &a/register <password> <password> &eto create your account. You have %timeout% seconds."
+    session-restored: "&aWelcome back. Your session was restored."
+    must-login: "&cYou must log in first."
+    already-logged-in: "&eYou are already logged in."
+    not-registered: "&cYou are not registered. Use /register first."
+    already-registered: "&cYou already have an account. Use /login."
+    usage-login: "&eUsage: /login <password>"
+    usage-register: "&eUsage: /register <password> <password>"
+    usage-register-simple: "&eUsage: /register <password>"
+    usage-changepassword: "&eUsage: /changepassword <old password> <new password>"
+    wrong-password: "&cWrong password. Attempts left: %left%."
+    locked: "&cToo many wrong passwords. Wait a few minutes and try again."
+    too-many-attempts: "&cToo many wrong passwords. Try again later."
+    timeout-kick: "&cYou took too long to log in."
+    login-success: "&aLogin successful. Enjoy the server!"
+    register-success: "&aYour account is created and you are logged in."
+    password-mismatch: "&cThe two passwords do not match."
+    password-too-short: "&cYour password must be at least %min% characters."
+    password-too-long: "&cYour password can be at most %max% characters."
+    password-is-username: "&cYour password cannot be your username."
+    changepassword-wrong: "&cThe old password is wrong."
+    changepassword-success: "&aYour password was changed."
+    logout-success: "&eYou are logged out. Use /login to come back."
+    reset-player: "&eAn admin reset your password. Register again with /register <password> <password>."
+    registration-closed: "&cRegistration is closed right now. Ask an admin to open it."
+    registration-enabled: "&aRegistration is open."
+    registration-disabled: "&eRegistration is closed. Existing players can still log in."
+    join-closed: "&eRegistration is closed. If you already have an account, use &a/login <password>&e."
+
+  registration:
+    # Change with /stickman registration enable|disable (saved automatically).
+    enabled: true
+
+# ---- wand settings ----
+wand:
+  # StickmanWand configuration. Colour codes use &.
+
+  # Seconds a player stays in combat after a player-vs-player hit.
+  # Players in combat cannot enter a safezone.
+  combat-seconds: 15
+
+  messages:
+    wand-given: "&dYou got the Stickman Wand. Shift + right-click two blocks to make a zone."
+    mode-set: "&aWand mode set to &e%mode%&a."
+    usage-mode: "&eUsage: /stickmanWorld wand mode <safezone|blockprotect>"
+    selection-cleared: "&eSelection cleared."
+    corner-1: "&aCorner 1 set at &f%x%, %y%, %z%&a. Shift + right-click the opposite corner."
+    confirm-safezone: "&eAre you sure you want to make that area a safezone? Say &a/yes &eor &c/no&e."
+    confirm-blockzone: "&eAre you sure you want to make that area a block protection zone? Say &a/yes &eor &c/no&e."
+    created-safezone: "&aSafezone &f%name%&a created. Players cannot break blocks or fight here."
+    created-blockzone: "&aBlock protection zone &f%name%&a created. Players cannot break or place blocks here, but PvP still works."
+    cancelled: "&eZone cancelled."
+    nothing-pending: "&cNothing to confirm. Shift + right-click two blocks with the wand first."
+    no-zones: "&eNo zones yet."
+    zone-removed: "&aZone &f%name%&a removed."
+    no-such-zone: "&cNo zone with that name."
+    no-permission: "&cYou do not have permission."
+    no-fight-safezone: "&cDon't fight in a safezone!!"
+    no-break-safezone: "&cYou can't break blocks in a safezone."
+    no-place-safezone: "&cYou can't place blocks in a safezone."
+    no-break-zone: "&cThis area is block protected."
+    no-place-zone: "&cThis area is block protected."
+    combat-no-enter: "&cYou are in combat. You can't enter a safezone until it ends."
+
+# ---- teams settings ----
+teams:
+  max-team-size: 10
+
+# ---- items settings ----
+# The items module saves its own data here automatically: cooldown timers and shrine contents.
+# Gem and item cooldown tweaks made with /stickmanitems nocd or /stickman nocooldowngem are saved here too.
+
+# ---- dungeons settings ----
+# The first start fills this in with 58 dungeons (each with its own biome, layout, boss, mobs, and reward).
+# Edit a dungeon with /dungeon set, or change it directly here and restart.
+
+# ---- disguises settings ----
+# The disguises module has no settings yet.
+
+# ---- creatures settings ----
+# The creatures module has no settings yet. Summon permission is set in plugin.yml (stickcreatures.use).
