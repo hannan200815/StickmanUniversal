@@ -1,1 +1,108 @@
-
+name: StickmanUniversal
+version: 0.1.0
+main: com.stickuniversal.StickmanUniversal
+api-version: '1.21'
+author: StickmanSMP
+description: One plugin that holds every StickmanSMP feature as a switchable module.
+commands:
+  stickmanuniversal:
+    description: Manage StickmanUniversal modules
+    usage: /stickmanuniversal help
+    permission: stickmanuniversal.admin
+  stickteam:
+    description: Team commands
+    usage: /stickteam help
+    aliases: [st]
+  banitem:
+    description: Ban an item
+    usage: /banitem [item|hand]
+    permission: stickadmin.admin
+  unbanitem:
+    description: Unban an item
+    usage: /unbanitem [item|hand]
+    permission: stickadmin.admin
+  banlist:
+    description: Show banned items
+    usage: /banlist
+    permission: stickadmin.admin
+  stickadmin:
+    description: Reload or scan banned items
+    usage: /stickadmin help
+    permission: stickadmin.admin
+  chest:
+    description: Find containers holding an item
+    usage: /chest lookup <item>
+    permission: stickadmin.admin
+  stickmanWorld:
+    description: Wand and zone commands
+    usage: /stickmanWorld help
+    permission: stickman.admin
+  'yes':
+    description: Confirm a new zone
+    usage: /yes
+    permission: stickman.admin
+  'no':
+    description: Cancel a new zone
+    usage: /no
+    permission: stickman.admin
+  stickcombat:
+    description: StickCombat admin commands
+    usage: /stickcombat help
+    permission: stickcombat.admin
+  resetpassword:
+    description: Remove a player's password so they must register again
+    usage: /resetpassword <name>
+    permission: stickauth.admin
+  stickauth:
+    description: StickLogin admin commands
+    usage: /stickauth help
+    permission: stickauth.admin
+  stickman:
+    description: StickLogin registration controls
+    usage: /stickman registration enable|disable|status
+    permission: stickauth.admin
+  disguise:
+    description: Open the disguise menu or disguise as a mob
+    usage: /disguise [mob|off|info]
+    aliases: [dis]
+  creature:
+    description: Summon and manage your creatures
+    usage: /creature help
+    aliases: [creatures]
+  dungeon:
+    description: Enter and manage dungeons
+    usage: /dungeon help
+  stickmanitems:
+    description: Manage Stickman items (operators only)
+    usage: /stickmanitems help
+permissions:
+  stickauth.admin:
+    description: Use StickLogin admin commands
+    default: op
+  stickcreatures.use:
+    description: Summon your own creature
+    default: true
+  stickcreatures.admin:
+    description: Summon creatures for other players
+    default: op
+  stickadmin.admin:
+    description: Manage banned items
+    default: op
+  stickadmin.bypass:
+    description: Ignore item bans
+    default: op
+  stickman.admin:
+    description: Use the wand and manage zones
+    default: op
+  stickman.bypass:
+    description: Ignore zone block protection
+    default: op
+  stickcombat.admin:
+    description: Use StickCombat admin commands
+    default: op
+  stickcombat.bypass:
+    description: Ignore StickCombat cooldowns, bans and barriers
+    default: op
+  stickmanuniversal.admin:
+    description: Manage StickmanUniversal modules
+    default: op
