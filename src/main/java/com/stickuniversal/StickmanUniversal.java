@@ -144,7 +144,7 @@ import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 
-public class StickmanUniversal extends JavaPlugin implements CommandExecutor, TabCompleter {
+public class StickmanUniversal extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
 
     /**
      * Every module the jar knows about. Round 1 adds StickTeams, StickAdminEssentials, StickmanWand and StickCombat here.
@@ -183,6 +183,12 @@ public class StickmanUniversal extends JavaPlugin implements CommandExecutor, Ta
                 }
             }
         }
+        getServer().getPluginManager().registerEvents(this, this);
+        for (Map.Entry<String, String> ce : MODULE_COMMANDS.entrySet()) {
+            final String cmdName = ce.getKey();
+            final String mod = ce.getValue();
+            getCommand(cmdName).setExecutor((sender, cmd, label, args) -> moduleCommand(sender, mod, cmd, label, args));
+        }
         getCommand("stickmanuniversal").setExecutor(this);
 
         // /stickman is shared: "registration" goes to the login module, everything else to the items module.
@@ -199,6 +205,427 @@ public class StickmanUniversal extends JavaPlugin implements CommandExecutor, Ta
         });
         getCommand("stickmanuniversal").setTabCompleter(this);
         getLogger().info("StickmanUniversal started with " + active.size() + " module(s).");
+    }
+
+    // ===== In-game menus =====
+
+    static final List<String> MODULES = List.of("teams", "adminessentials", "wand", "combat", "login", "disguises", "creatures", "dungeons", "items");
+
+    static final Map<String, String> MODULE_NAMES = Map.of(
+            "teams", "Teams", "adminessentials", "Item Bans", "wand", "Wand and Zones", "combat", "Combat",
+            "login", "Login", "disguises", "Disguises", "creatures", "Creatures", "dungeons", "Dungeons", "items", "Items");
+
+    static final Map<String, Material> MODULE_ICONS = Map.of(
+            "teams", Material.WHITE_BANNER, "adminessentials", Material.BARRIER, "wand", Material.BLAZE_ROD,
+            "combat", Material.IRON_SWORD, "login", Material.IRON_DOOR, "disguises", Material.ZOMBIE_HEAD,
+            "creatures", Material.AXOLOTL_BUCKET, "dungeons", Material.CHISELED_DEEPSLATE, "items", Material.NETHER_STAR);
+
+    /** Every /stickmanX command and the module it belongs to. Typing "menu" (or nothing) opens that module's menu. */
+    static final Map<String, String> MODULE_COMMANDS = Map.of(
+            "stickmanteams", "teams", "stickmanadmin", "adminessentials", "stickmanwand", "wand", "stickmancombat", "combat",
+            "stickmanlogin", "login", "stickmandisguises", "disguises", "stickmancreatures", "creatures",
+            "stickmandungeons", "dungeons", "stickmanitems", "items");
+
+    /** One editable setting. Bool settings toggle on click; number settings change by step (left +, right -). */
+    record Setting(String path, boolean bool, int step, int min, int max, String label) {}
+
+    static final Map<String, List<Setting>> SETTINGS = Map.of(
+            "combat", List.of(
+                    new Setting("combat.duration-seconds", false, 5, 0, 600, "Combat length (seconds)"),
+                    new Setting("barrier.enabled", true, 0, 0, 0, "Safezone barrier"),
+                    new Setting("barrier.only-in-combat", true, 0, 0, 0, "Barrier only in combat"),
+                    new Setting("combat.tag-on-mob-hit", true, 0, 0, 0, "Mobs start combat"),
+                    new Setting("combat.tag-on-player-hit", true, 0, 0, 0, "Player hits start combat")),
+            "login", List.of(
+                    new Setting("registration.enabled", true, 0, 0, 0, "Registration open"),
+                    new Setting("login.timeout-seconds", false, 10, 10, 600, "Login timeout (seconds)"),
+                    new Setting("login.max-attempts", false, 1, 1, 20, "Max wrong passwords"),
+                    new Setting("session.minutes", false, 60, 0, 10080, "Session length (minutes)"),
+                    new Setting("login.freeze-damage", true, 0, 0, 0, "No damage before login"),
+                    new Setting("login.restore-location", true, 0, 0, 0, "Restore location after login")),
+            "wand", List.of(new Setting("combat-seconds", false, 5, 0, 600, "Combat length (seconds)")),
+            "teams", List.of(new Setting("max-team-size", false, 1, 2, 50, "Max team size")),
+            "adminessentials", List.of(
+                    new Setting("scan-seconds", false, 1, 1, 60, "Ban scan interval (seconds)"),
+                    new Setting("remove-ground-items", true, 0, 0, 0, "Remove banned ground items"),
+                    new Setting("notify-on-block", true, 0, 0, 0, "Tell players when blocked")));
+
+    static final int ITEM_PAGE = 45;
+
+    static final class UniHolder implements InventoryHolder {
+        final String screen;
+        final String module;
+        final int page;
+        String key = "";
+        String extra = "";
+        Inventory inv;
+
+        UniHolder(String screen, String module, int page) {
+            this.screen = screen;
+            this.module = module;
+            this.page = page;
+        }
+
+        @Override
+        public Inventory getInventory() {
+            return inv;
+        }
+    }
+
+    /** One item the cooldown editor can change: a material, plus a name for StickmanItems items. */
+    record ItemEntry(Material mat, String nameContains, String label) {
+        String key() {
+            return mat.name();
+        }
+    }
+
+    private ItemStack button(Material m, String name, String... lore) {
+        ItemStack it = new ItemStack(m == null ? Material.PAPER : m);
+        ItemMeta meta = it.getItemMeta();
+        meta.setDisplayName(name);
+        meta.setLore(List.of(lore));
+        it.setItemMeta(meta);
+        return it;
+    }
+
+    private static String onOff(boolean b) {
+        return b ? ChatColor.GREEN + "ON" : ChatColor.RED + "OFF";
+    }
+
+    private static String prettyName(Material m) {
+        StringBuilder sb = new StringBuilder();
+        for (String w : m.name().toLowerCase(Locale.ROOT).split("_")) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
+        }
+        return sb.toString();
+    }
+
+    private static double dbl(Object o) {
+        if (o == null) return 0;
+        try {
+            return Double.parseDouble(String.valueOf(o));
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
+
+    private static boolean flag(Map<String, Object> r, String key) {
+        return r != null && Boolean.parseBoolean(String.valueOf(r.get(key)));
+    }
+
+    private static String nameOf(Map<String, Object> r) {
+        Object v = r.get("name-contains");
+        return v == null ? "" : String.valueOf(v);
+    }
+
+    private List<Map<String, Object>> readRules(FileConfiguration cfg) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<?, ?> raw : cfg.getMapList("rules")) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> en : raw.entrySet()) m.put(String.valueOf(en.getKey()), en.getValue());
+            out.add(m);
+        }
+        return out;
+    }
+
+    private Map<String, Object> findRule(List<Map<String, Object>> rules, String key, String extra) {
+        for (Map<String, Object> r : rules) {
+            if (String.valueOf(r.get("key")).equalsIgnoreCase(key) && nameOf(r).equalsIgnoreCase(extra)) return r;
+        }
+        return null;
+    }
+
+    /** Every item in the game: StickmanItems items and gems first, then every vanilla item. */
+    private List<ItemEntry> allItemEntries() {
+        List<ItemEntry> out = new ArrayList<>();
+        if (activeModule("items") instanceof ItemsModule im) {
+            for (ItemsModule.ItemDef d : im.items.values()) out.add(new ItemEntry(d.mat(), d.name(), d.name()));
+            for (ItemsModule.ItemDef d : im.gems.values()) out.add(new ItemEntry(d.mat(), d.name(), d.name()));
+        }
+        for (Material m : Material.values()) {
+            if (m.isItem() && !m.isAir()) out.add(new ItemEntry(m, null, prettyName(m)));
+        }
+        return out;
+    }
+
+    private void toggleModule(Player p, String mod) {
+        boolean on = getConfig().getBoolean("modules." + mod + ".enabled", false);
+        getConfig().set("modules." + mod + ".enabled", !on);
+        saveConfig();
+        p.sendMessage(ChatColor.GREEN + MODULE_NAMES.get(mod) + " is now " + (!on ? "ON" : "OFF") + ". Restart the server to apply.");
+    }
+
+    private void adjustSetting(Player p, String mod, int index, boolean left) {
+        List<Setting> list = SETTINGS.getOrDefault(mod, List.of());
+        if (index < 0 || index >= list.size()) return;
+        Setting s = list.get(index);
+        FileConfiguration cfg = moduleConfig(mod);
+        if (s.bool()) {
+            cfg.set(s.path(), !cfg.getBoolean(s.path()));
+        } else {
+            int v = cfg.getInt(s.path());
+            v = left ? v + s.step() : v - s.step();
+            cfg.set(s.path(), Math.max(s.min(), Math.min(s.max(), v)));
+        }
+        saveModuleConfig(mod, cfg);
+        p.sendMessage(ChatColor.GREEN + "Saved: " + s.label() + ". Restart the server to apply.");
+    }
+
+    private void openMain(Player p) {
+        UniHolder h = new UniHolder("main", "", 0);
+        Inventory inv = Bukkit.createInventory(h, 54, ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "StickmanUniversal");
+        h.inv = inv;
+        for (int i = 0; i < MODULES.size(); i++) {
+            String m = MODULES.get(i);
+            boolean on = getConfig().getBoolean("modules." + m + ".enabled", false);
+            inv.setItem(10 + i, button(MODULE_ICONS.get(m), ChatColor.WHITE + "" + ChatColor.BOLD + MODULE_NAMES.get(m),
+                    "Status: " + onOff(on), "Left-click: open settings", "Right-click: switch on or off"));
+        }
+        inv.setItem(40, button(Material.GOLD_INGOT, ChatColor.YELLOW + "" + ChatColor.BOLD + "Item cooldowns",
+                "Set a cooldown for any item in the game"));
+        inv.setItem(49, button(Material.BARRIER, ChatColor.RED + "Close"));
+        p.openInventory(inv);
+    }
+
+    private void openModule(Player p, String mod) {
+        if (mod.equals("items")) {
+            openItems(p, 0);
+            return;
+        }
+        UniHolder h = new UniHolder("module", mod, 0);
+        Inventory inv = Bukkit.createInventory(h, 54, ChatColor.DARK_PURPLE + MODULE_NAMES.get(mod));
+        h.inv = inv;
+        boolean on = getConfig().getBoolean("modules." + mod + ".enabled", false);
+        inv.setItem(4, button(MODULE_ICONS.get(mod), ChatColor.WHITE + "" + ChatColor.BOLD + MODULE_NAMES.get(mod),
+                "Status: " + onOff(on)));
+        FileConfiguration cfg = moduleConfig(mod);
+        List<Setting> list = SETTINGS.getOrDefault(mod, List.of());
+        if (list.isEmpty()) {
+            inv.setItem(22, button(Material.PAPER, ChatColor.GRAY + "No settings in this menu yet", "Edit config.yml for this module"));
+        }
+        for (int i = 0; i < list.size() && i < 7; i++) {
+            Setting s = list.get(i);
+            if (s.bool()) {
+                inv.setItem(10 + i * 2, button(Material.LIME_DYE, ChatColor.WHITE + s.label() + ": " + onOff(cfg.getBoolean(s.path())),
+                        "Click to switch"));
+            } else {
+                inv.setItem(10 + i * 2, button(Material.CLOCK, ChatColor.WHITE + s.label() + ": " + ChatColor.YELLOW + cfg.getInt(s.path()),
+                        "Left-click: +" + s.step(), "Right-click: -" + s.step()));
+            }
+        }
+        inv.setItem(45, button(Material.ARROW, ChatColor.YELLOW + "Back"));
+        inv.setItem(49, button(on ? Material.RED_DYE : Material.LIME_DYE, on ? "Turn module OFF" : "Turn module ON",
+                "Restart the server to apply"));
+        p.openInventory(inv);
+    }
+
+    private void openItems(Player p, int page) {
+        if (!(activeModule("combat") instanceof CombatModule)) {
+            p.sendMessage(ChatColor.RED + "Turn on the combat module first. Item cooldowns are set there.");
+            return;
+        }
+        List<ItemEntry> entries = allItemEntries();
+        int pages = Math.max(1, (entries.size() + ITEM_PAGE - 1) / ITEM_PAGE);
+        int pg = Math.max(0, Math.min(page, pages - 1));
+        UniHolder h = new UniHolder("items", "combat", pg);
+        Inventory inv = Bukkit.createInventory(h, 54, ChatColor.DARK_PURPLE + "Item cooldowns " + (pg + 1) + "/" + pages);
+        h.inv = inv;
+        List<Map<String, Object>> rules = readRules(moduleConfig("combat"));
+        for (int i = 0; i < ITEM_PAGE && pg * ITEM_PAGE + i < entries.size(); i++) {
+            ItemEntry en = entries.get(pg * ITEM_PAGE + i);
+            Map<String, Object> r = findRule(rules, en.key(), en.nameContains() == null ? "" : en.nameContains());
+            double secs = r == null ? 0 : dbl(r.get("cooldown-seconds"));
+            inv.setItem(i, button(en.mat(), ChatColor.WHITE + en.label(),
+                    secs > 0 ? "Cooldown: " + secs + "s" : "Cooldown: none",
+                    flag(r, "banned") ? ChatColor.RED + "BANNED" : "Click to edit"));
+        }
+        if (pg > 0) inv.setItem(45, button(Material.ARROW, ChatColor.YELLOW + "Previous page"));
+        inv.setItem(49, button(Material.COMPASS, ChatColor.YELLOW + "Main menu"));
+        if (pg < pages - 1) inv.setItem(53, button(Material.ARROW, ChatColor.YELLOW + "Next page"));
+        p.openInventory(inv);
+    }
+
+    private void openItemEditor(Player p, String matKey, String extra, int page) {
+        Material mat = Material.matchMaterial(matKey);
+        UniHolder h = new UniHolder("item", "combat", page);
+        h.key = matKey;
+        h.extra = extra;
+        String label = extra.isEmpty() && mat != null ? prettyName(mat) : extra;
+        Inventory inv = Bukkit.createInventory(h, 54, ChatColor.DARK_PURPLE + "Edit: " + label);
+        h.inv = inv;
+        Map<String, Object> r = findRule(readRules(moduleConfig("combat")), matKey, extra);
+        double secs = r == null ? 0 : dbl(r.get("cooldown-seconds"));
+        inv.setItem(4, button(mat, ChatColor.WHITE + "" + ChatColor.BOLD + label,
+                "Cooldown: " + (secs > 0 ? secs + "s" : "none"), "Applies to every use of this item"));
+        inv.setItem(19, button(Material.RED_DYE, ChatColor.RED + "-10 seconds"));
+        inv.setItem(20, button(Material.RED_DYE, ChatColor.RED + "-1 second"));
+        inv.setItem(22, button(Material.LIME_DYE, ChatColor.GREEN + "+1 second"));
+        inv.setItem(23, button(Material.LIME_DYE, ChatColor.GREEN + "+10 seconds"));
+        inv.setItem(25, button(Material.BUCKET, ChatColor.YELLOW + "Clear all limits for this item"));
+        inv.setItem(29, button(Material.BARRIER, "Banned: " + onOff(flag(r, "banned")), "Click to switch"));
+        inv.setItem(31, button(Material.IRON_SWORD, "Disabled in combat: " + onOff(flag(r, "disabled-in-combat")), "Click to switch"));
+        inv.setItem(33, button(Material.CLOCK, "Cooldown only in combat: " + onOff(flag(r, "cooldown-only-in-combat")), "Click to switch"));
+        inv.setItem(45, button(Material.ARROW, ChatColor.YELLOW + "Back"));
+        inv.setItem(49, button(Material.COMPASS, ChatColor.YELLOW + "Main menu"));
+        p.openInventory(inv);
+    }
+
+    /** Changes one item's rule in the combat config and reloads the combat module straight away. */
+    private void editRule(Player p, String matKey, String extra, String action) {
+        if (!(activeModule("combat") instanceof CombatModule combat)) {
+            p.sendMessage(ChatColor.RED + "Turn on the combat module first.");
+            return;
+        }
+        FileConfiguration cfg = moduleConfig("combat");
+        List<Map<String, Object>> rules = readRules(cfg);
+        Map<String, Object> r = findRule(rules, matKey, extra);
+        if (r == null) {
+            r = new LinkedHashMap<>();
+            r.put("key", matKey);
+            if (!extra.isEmpty()) r.put("name-contains", extra);
+            r.put("cooldown-seconds", 0.0);
+            rules.add(r);
+        }
+        double secs = dbl(r.get("cooldown-seconds"));
+        switch (action) {
+            case "-10" -> secs = Math.max(0, secs - 10);
+            case "-1" -> secs = Math.max(0, secs - 1);
+            case "+1" -> secs = secs + 1;
+            case "+10" -> secs = secs + 10;
+            case "clear" -> {
+                secs = 0;
+                r.put("banned", false);
+                r.put("disabled-in-combat", false);
+                r.put("cooldown-only-in-combat", false);
+            }
+            case "banned" -> r.put("banned", !flag(r, "banned"));
+            case "disabled" -> r.put("disabled-in-combat", !flag(r, "disabled-in-combat"));
+            case "onlycombat" -> r.put("cooldown-only-in-combat", !flag(r, "cooldown-only-in-combat"));
+            default -> { }
+        }
+        r.put("cooldown-seconds", secs);
+        if (secs == 0 && !flag(r, "banned") && !flag(r, "disabled-in-combat") && !flag(r, "cooldown-only-in-combat")) {
+            rules.remove(r);
+        }
+        cfg.set("rules", rules);
+        saveModuleConfig("combat", cfg);
+        combat.reloadRulesNow();
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onUniMenuClick(InventoryClickEvent e) {
+        if (!(e.getView().getTopInventory().getHolder() instanceof UniHolder h)) return;
+        e.setCancelled(true);
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        if (!p.hasPermission("stickmanuniversal.admin")) {
+            p.closeInventory();
+            return;
+        }
+        int slot = e.getRawSlot();
+        if (slot < 0 || slot >= 54) return;
+        switch (h.screen) {
+            case "main" -> clickMain(p, slot, e.isRightClick());
+            case "module" -> clickModule(p, h.module, slot, e.isLeftClick());
+            case "items" -> clickItems(p, h.page, slot);
+            case "item" -> clickItem(p, h, slot);
+            default -> { }
+        }
+    }
+
+    private void clickMain(Player p, int slot, boolean right) {
+        if (slot >= 10 && slot < 10 + MODULES.size()) {
+            String m = MODULES.get(slot - 10);
+            if (right) {
+                toggleModule(p, m);
+                openMain(p);
+            } else {
+                openModule(p, m);
+            }
+        } else if (slot == 40) {
+            openItems(p, 0);
+        } else if (slot == 49) {
+            p.closeInventory();
+        }
+    }
+
+    private void clickModule(Player p, String mod, int slot, boolean left) {
+        if (slot == 45) {
+            openMain(p);
+        } else if (slot == 49) {
+            toggleModule(p, mod);
+            openModule(p, mod);
+        } else if (slot >= 10 && slot <= 22 && (slot - 10) % 2 == 0) {
+            adjustSetting(p, mod, (slot - 10) / 2, left);
+            openModule(p, mod);
+        }
+    }
+
+    private void clickItems(Player p, int page, int slot) {
+        if (slot == 45) {
+            openItems(p, page - 1);
+        } else if (slot == 53) {
+            openItems(p, page + 1);
+        } else if (slot == 49) {
+            openMain(p);
+        } else if (slot < ITEM_PAGE) {
+            List<ItemEntry> entries = allItemEntries();
+            int index = page * ITEM_PAGE + slot;
+            if (index < entries.size()) {
+                ItemEntry en = entries.get(index);
+                openItemEditor(p, en.key(), en.nameContains() == null ? "" : en.nameContains(), page);
+            }
+        }
+    }
+
+    private void clickItem(Player p, UniHolder h, int slot) {
+        if (slot == 45) {
+            openItems(p, h.page);
+            return;
+        }
+        if (slot == 49) {
+            openMain(p);
+            return;
+        }
+        String action = switch (slot) {
+            case 19 -> "-10";
+            case 20 -> "-1";
+            case 22 -> "+1";
+            case 23 -> "+10";
+            case 25 -> "clear";
+            case 29 -> "banned";
+            case 31 -> "disabled";
+            case 33 -> "onlycombat";
+            default -> "";
+        };
+        if (action.isEmpty()) return;
+        editRule(p, h.key, h.extra, action);
+        openItemEditor(p, h.key, h.extra, h.page);
+    }
+
+    /** One /stickmanX command: "menu" (or nothing) opens that module's menu, anything else goes to the module. */
+    private boolean moduleCommand(CommandSender sender, String mod, Command cmd, String label, String[] args) {
+        if (!sender.hasPermission("stickmanuniversal.admin")) {
+            sender.sendMessage(ChatColor.RED + "You do not have permission.");
+            return true;
+        }
+        if (args.length == 0 || args[0].equalsIgnoreCase("menu")) {
+            if (sender instanceof Player p) {
+                if (mod.equals("items")) openItems(p, 0);
+                else openModule(p, mod);
+            } else {
+                sender.sendMessage(ChatColor.RED + "Players only.");
+            }
+            return true;
+        }
+        if (mod.equals("wand")) {
+            sender.sendMessage(ChatColor.YELLOW + "Use /stickmanWorld for wand commands.");
+            return true;
+        }
+        StickModule target = activeModule(mod);
+        if (target instanceof CommandExecutor ex) return ex.onCommand(sender, cmd, label, args);
+        sender.sendMessage(ChatColor.RED + "That module is not running. Turn it on in config.yml.");
+        return true;
     }
 
     private StickModule routeStickman(String[] args) {
@@ -251,6 +678,10 @@ public class StickmanUniversal extends JavaPlugin implements CommandExecutor, Ta
         }
         String sub = args.length > 0 ? args[0].toLowerCase(Locale.ROOT) : "help";
         switch (sub) {
+            case "menu" -> {
+                if (sender instanceof Player mp) openMain(mp);
+                else sender.sendMessage(ChatColor.RED + "Players only.");
+            }
             case "modules" -> {
                 sender.sendMessage(ChatColor.GOLD + "StickmanUniversal modules:");
                 if (REGISTERED.isEmpty()) {
@@ -744,6 +1175,12 @@ public class StickmanUniversal extends JavaPlugin implements CommandExecutor, Ta
 
     // ===== CombatModule.java =====
     public static class CombatModule implements StickModule, Listener, CommandExecutor, TabCompleter {
+
+        /** Reloads cooldown rules from config.yml straight away (used by the in-game menu). */
+        public void reloadRulesNow() {
+            cfg = host.moduleConfig("combat");
+            loadRules();
+        }
 
         private StickmanUniversal host;
         private FileConfiguration cfg;
