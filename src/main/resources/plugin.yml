@@ -75,6 +75,38 @@ commands:
   stickmanitems:
     description: Manage Stickman items (operators only)
     usage: /stickmanitems help
+  stickmanteams:
+    description: Open this module's menu (or run its commands)
+    usage: /stickmanteams menu
+    permission: stickmanuniversal.admin
+  stickmanadmin:
+    description: Open this module's menu (or run its commands)
+    usage: /stickmanadmin menu
+    permission: stickmanuniversal.admin
+  stickmanwand:
+    description: Open this module's menu (or run its commands)
+    usage: /stickmanwand menu
+    permission: stickmanuniversal.admin
+  stickmancombat:
+    description: Open this module's menu (or run its commands)
+    usage: /stickmancombat menu
+    permission: stickmanuniversal.admin
+  stickmanlogin:
+    description: Open this module's menu (or run its commands)
+    usage: /stickmanlogin menu
+    permission: stickmanuniversal.admin
+  stickmandisguises:
+    description: Open this module's menu (or run its commands)
+    usage: /stickmandisguises menu
+    permission: stickmanuniversal.admin
+  stickmancreatures:
+    description: Open this module's menu (or run its commands)
+    usage: /stickmancreatures menu
+    permission: stickmanuniversal.admin
+  stickmandungeons:
+    description: Open this module's menu (or run its commands)
+    usage: /stickmandungeons menu
+    permission: stickmanuniversal.admin
 permissions:
   stickauth.admin:
     description: Use StickLogin admin commands
